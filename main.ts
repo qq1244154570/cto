@@ -103,5 +103,5 @@ logger.info(`🎨 管理后台: http://localhost:${PORT}/admin/login`);
 logger.info(`✅ 实时日志系统已启动`);
 logger.info(`📡 等待 API 请求...`);
 
-await app.listen({ port: PORT });
+Deno.serve({ port: PORT }, (req) => app.fetch(req));
 
