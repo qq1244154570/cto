@@ -20,20 +20,20 @@ app.use(async (ctx, next) => {
   const method = ctx.request.method;
   const url = ctx.request.url.pathname;
   const status = ctx.response.status;
-  
+
   // 过滤掉不需要记录的请求
   const filteredPaths = [
-    '/admin/api/logs/stream',    // SSE 日志流
-    '/admin/api/stats',           // 管理后台轮询统计
-    '/admin/api/cookies',         // 管理后台轮询 Cookie
-    '/admin/api/conversations',   // 管理后台轮询会话
-    '/favicon.ico',               // 图标请求
+    "/admin/api/logs/stream",   // SSE 日志流
+    "/admin/api/stats",         // 管理后台轮询统计
+    "/admin/api/cookies",       // 管理后台轮询 Cookie
+    "/admin/api/conversations", // 管理后台轮询会话
+    "/favicon.ico",             // 图标请求
   ];
-  
-  if (filteredPaths.some(path => url.includes(path))) {
+
+  if (filteredPaths.some((path) => url.includes(path))) {
     return;
   }
-  
+
   // 使用日志服务记录
   if (status >= 400) {
     logger.error(`${method} ${url} - ${status} (${ms}ms)`);
@@ -51,6 +51,18 @@ app.use(async (ctx, next) => {
     ctx.response.status = 500;
     ctx.response.body = { error: "Internal Server Error" };
   }
+});
+
+// 简单健康检查（Deploy 预热/健康探测更稳）
+app.use(async (ctx, next) => {
+  const p = ctx.request.url.pathname;
+  if (ctx.request.method === "GET" && (p === "/" || p === "/healthz")) {
+    ctx.response.status = 200;
+    ctx.response.type = "application/json";
+    ctx.response.body = { ok: true, version: VERSION };
+    return;
+  }
+  await next();
 });
 
 // CORS 中间件（可选）
@@ -79,8 +91,10 @@ app.use(adminRouter.allowedMethods());
 app.use(apiRouter.routes());
 app.use(apiRouter.allowedMethods());
 
-// 启动服务器
-console.log(`
+// 启动横幅日志（避免多实例重复打印）
+if (!(globalThis as any).__BOOT_LOGGED__) {
+  (globalThis as any).__BOOT_LOGGED__ = true;
+  console.log(`
 ╔═══════════════════════════════════════════════════════╗
 ║                                                       ║
 ║   🚀 CTO.new API 转换器 v${VERSION}                   ║
@@ -97,11 +111,11 @@ console.log(`
 ║                                                       ║
 ╚═══════════════════════════════════════════════════════╝
 `);
+  logger.info(`🚀 服务器启动成功，监听端口 ${PORT}`);
+  logger.info(`🎨 管理后台: http://localhost:${PORT}/admin/login`);
+  logger.info(`✅ 实时日志系统已启动`);
+  logger.info(`📡 等待 API 请求...`);
+}
 
-logger.info(`🚀 服务器启动成功，监听端口 ${PORT}`);
-logger.info(`🎨 管理后台: http://localhost:${PORT}/admin/login`);
-logger.info(`✅ 实时日志系统已启动`);
-logger.info(`📡 等待 API 请求...`);
-
-Deno.serve({ port: PORT }, (req) => app.fetch(req));
-
+// ✅ 用 Deno.serve 驱动 Oak：本地会使用端口；在 Deno Deploy 上会忽略端口但能正常接管请求
+Deno.serve({ port: PORT }, (request, info) => app.handle(request, info.remoteAddr));
